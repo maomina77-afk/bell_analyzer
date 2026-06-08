@@ -39,4 +39,85 @@ document.getElementById("startBtn").onclick = async () => {
     analyser = audioCtx.createAnalyser();
     analyser.fftSize = 4096;
 
-    const stream = await navigator.mediaDevices.getUserMedia({ audio
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    micStream = audioCtx.createMediaStreamSource(stream);
+    micStream.connect(analyser);
+
+    dataArray = new Uint8Array(analyser.frequencyBinCount);
+    freqArray = new Float32Array(analyser.frequencyBinCount);
+
+    draw();
+};
+
+document.getElementById("stopBtn").onclick = () => {
+    running = false;
+    if (audioCtx) audioCtx.close();
+};
+
+document.getElementById("csvBtn").onclick = () => {
+    let csv = "frequency, max_volume\n";
+    for (const f in maxVolumeMap) {
+        csv += `${f}, ${maxVolumeMap[f]}\n`;
+    }
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "bell_frequency_max_volume.csv";
+    a.click();
+};
+
+function draw() {
+    if (!running) return;
+
+    analyser.getByteFrequencyData(dataArray);
+
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    const width = canvas.width;
+    const height = canvas.height;
+
+    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = "lime";
+
+    let peakFreq = 0;
+    let peakVol = 0;
+
+    for (let i = 0; i < dataArray.length; i++) {
+        const vol = dataArray[i];
+        const freq = i * audioCtx.sampleRate / analyser.fftSize;
+
+        // グラフ描画
+        const x = (i / dataArray.length) * width;
+        const y = height - (vol / 255) * height;
+        ctx.fillRect(x, y, 1, height);
+
+        // ピーク検出
+        if (vol > peakVol) {
+            peakVol = vol;
+            peakFreq = Math.round(freq);
+        }
+
+        // 最大音量記録
+        if (!maxVolumeMap[freq] || vol > maxVolumeMap[freq]) {
+            maxVolumeMap[freq] = vol;
+        }
+    }
+
+    document.getElementById("peakFreq").textContent = peakFreq;
+    document.getElementById("peakVol").textContent = peakVol;
+
+    // ログ表示
+    const log = Object.keys(maxVolumeMap)
+        .sort((a, b) => Number(a) - Number(b))
+        .map(f => `${f} Hz : ${maxVolumeMap[f]}`)
+        .join("\n");
+
+    document.getElementById("log").textContent = log;
+
+    requestAnimationFrame(draw);
+}
+</script>
+
+</body>
+</html>
