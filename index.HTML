@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>釣り鐘 周波数・音量測定</title>
+<style>
+body { font-family: sans-serif; padding: 20px; }
+#log { white-space: pre-wrap; background: #f0f0f0; padding: 10px; height: 200px; overflow-y: scroll; }
+canvas { width: 100%; height: 150px; background: #000; }
+</style>
+</head>
+<body>
+
+<h2>釣り鐘 周波数・音量測定アプリ</h2>
+<button id="startBtn">測定開始</button>
+<button id="stopBtn">停止</button>
+<button id="csvBtn">CSVダウンロード</button>
+
+<h3>リアルタイム情報</h3>
+<div>ピーク周波数: <span id="peakFreq">-</span> Hz</div>
+<div>ピーク音量: <span id="peakVol">-</span></div>
+
+<h3>周波数スペクトル</h3>
+<canvas id="canvas"></canvas>
+
+<h3>周波数ごとの最大音量ログ</h3>
+<div id="log"></div>
+
+<script>
+let audioCtx, analyser, dataArray, freqArray, micStream;
+let running = false;
+let maxVolumeMap = {};  // 周波数ごとの最大音量記録
+
+document.getElementById("startBtn").onclick = async () => {
+    if (running) return;
+    running = true;
+
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    analyser = audioCtx.createAnalyser();
+    analyser.fftSize = 4096;
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio
