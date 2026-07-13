@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>釣り鐘解析・自動カウントシステム</title>
+    <title>自動カウントV1.02</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 0; overflow-x: hidden; }
         * { box-sizing: border-box; }
@@ -64,7 +64,7 @@
 
 <!-- ヘッダー -->
 <div class="header">
-    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">鐘解析システム</div>
+    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.02</div>
     <div class="clock" id="clockDisplay">00:00:00</div>
     <button class="btn-menu" id="btnMenu">☰</button>
 </div>
@@ -173,8 +173,8 @@
 
 <script>
     // === 1. 状態管理・時計 ===
-    const DEFAULT_PEAKS = [27, 34, 19, 31, 13];
-    let state = { count: 0, logs: [], learnedPeaks: [...DEFAULT_PEAKS], threshold: 130 };
+    const DEFAULT_PEAKS = [27, 34, 19, 31, 35];
+    let state = { count: 0, logs: [], learnedPeaks: [...DEFAULT_PEAKS], threshold: 170 };
     
     const savedState = localStorage.getItem('bell_app_v6');
     if (savedState) { 
@@ -362,26 +362,98 @@
         }
     }
 
-    // 検知ループ
+ // === 鐘の音の学習処理（指紋作成） ===
+    let isLearning = false;
+    document.getElementById('btnLearnStart').addEventListener('click', () => {
+        if (!isAnalyzing) return alert('先にマイク接続を開始してください。');
+        if (isLearning) return; // 既に処理中なら何もしない
+        
+        const btn = document.getElementById('btnLearnStart');
+        const resultDiv = document.getElementById('learningResult');
+        btn.disabled = true; // 連打防止
+        
+        let countdown = 3;
+        resultDiv.style.color = '#dcdcaa';
+        resultDiv.textContent = `⏳ ${countdown}秒後に学習開始...`;
+        
+        // カウントダウン
+        const countInterval = setInterval(() => {
+            countdown--;
+            if (countdown > 0) {
+                resultDiv.textContent = `⏳ ${countdown}秒後に学習開始...`;
+            } else {
+                clearInterval(countInterval);
+                startRecording();
+            }
+        }, 1000);
+
+        // 録音・解析処理 (3秒間)
+        function startRecording() {
+            isLearning = true;
+            let tempPeaks = new Array(analyser.frequencyBinCount).fill(0);
+            resultDiv.style.color = '#ff6b6b';
+            resultDiv.textContent = "🔴 鐘を鳴らしてください (3秒間録音)...";
+            
+            let frames = 0;
+            const learnInterval = setInterval(() => {
+                analyser.getByteFrequencyData(freqArray);
+                for(let i = 0; i < freqArray.length; i++) tempPeaks[i] += freqArray[i];
+                frames++;
+            }, 50);
+
+            setTimeout(() => {
+                clearInterval(learnInterval);
+                isLearning = false;
+                btn.disabled = false;
+                
+                // 平均値から上位5つの周波数帯（インデックス）を抽出
+                let avgPeaks = tempPeaks.map(v => v / frames);
+                let peaksWithIndex = avgPeaks.map((val, idx) => ({val, idx})).sort((a, b) => b.val - a.val);
+                
+                state.learnedPeaks = peaksWithIndex.slice(0, 5).map(p => p.idx);
+                saveState();
+                updateLogUI();
+                
+                resultDiv.style.color = '#ce9178';
+                resultDiv.textContent = `✅ 学習完了: [${state.learnedPeaks.join(', ')}]`;
+            }, 3000);
+        }
+    });
+
+    // === 検知ループ（学習データマッチング方式） ===
     function detectLoop() {
         if (!isAnalyzing) return;
-        setTimeout(detectLoop, 100);
+        setTimeout(detectLoop, 100); // 0.1秒ごとにチェック
+        
+        // 学習中、またはクールダウン中は判定をスキップ
+        if (isLearning || state.learnedPeaks.length === 0 || isRinging) return;
+
         analyser.getByteFrequencyData(freqArray);
         
-        let maxIntensity = 0;
-        for(let i=0; i<freqArray.length; i++) {
-            if(freqArray[i] > maxIntensity) maxIntensity = freqArray[i];
+        let matchScore = 0;
+        let maxVal = 0;
+        
+        // 学習した特定の周波数帯域のみをチェック
+        for (let idx of state.learnedPeaks) {
+            if (freqArray[idx] > state.threshold) {
+                matchScore++;
+                if (freqArray[idx] > maxVal) maxVal = freqArray[idx]; // ログ用に最大強度を記録
+            }
         }
 
-        if (maxIntensity > state.threshold && !isRinging) {
+        // ピークの過半数（5個設定なら3個以上）が閾値を超えたら「打鐘」と判定
+        const requiredMatches = Math.ceil(state.learnedPeaks.length / 2);
+        if (matchScore >= requiredMatches) {
             isRinging = true;
             state.count++;
-            addLog("自動検知", maxIntensity);
+            addLog("自動検知", maxVal);
 
+            // 録画機能がONならトリガー
             if (isRecordFeatureOn && !isRecordingNow) triggerRecording();
 
+            // 二重カウント防止のクールダウン（2秒）
             clearTimeout(cooldownTimer);
-            cooldownTimer = setTimeout(() => { isRinging = false; }, 2000);
+            cooldownTimer = setTimeout(() => { isRinging = false; }, 10000);
         }
     }
 
