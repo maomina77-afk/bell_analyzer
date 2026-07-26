@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>自動カウントV1.02</title>
+    <title>自動カウントV1.03</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 0; overflow-x: hidden; }
         * { box-sizing: border-box; }
@@ -25,20 +25,24 @@
         
         .btn-start { background-color: #28a745; width: 100%; margin-bottom: 10px; padding: 15px; font-size: 1.2em; }
         .btn-stop { background-color: #dc3545; width: 100%; margin-bottom: 10px; padding: 15px; font-size: 1.2em; }
-        .btn-manual { background-color: #555; font-size: 1.5em; width: 60px; height: 50px; }
+        .btn-manual { background-color: #555; font-size: 1.5em; }
         
         /* カウント表示 */
-        .count-display { font-size: 5em; font-weight: bold; color: #4fc1ff; text-align: center; line-height: 1; margin: 10px 0; }
+        .count-display { font-size: 5em; font-weight: bold; color: #4fc1ff; text-align: center; line-height: 1; }
         
         /* タイマー・ログ */
-        .timer-msg { font-size: 1.1em; color: #dcdcaa; font-weight: bold; text-align: center; min-height: 1.5em; margin-top: 10px; }
+        .timer-msg { font-size: 1.1em; color: #dcdcaa; font-weight: bold; text-align: center; min-height: 1.5em; }
         .setting-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 0.9em; }
         input[type="number"], input[type="time"] { background-color: #3c3c3c; color: white; border: 1px solid #555; padding: 8px; border-radius: 4px; width: 100px; text-align: center; }
         
-        table { width: 100%; border-collapse: collapse; font-size: 0.9em; margin-top: 10px; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.9em; margin-top: 5px; }
         th, td { border: 1px solid #555; padding: 8px 5px; text-align: center; }
-        th { background-color: #333; }
-        .log-wrap { max-height: 200px; overflow-y: auto; }
+        th { background-color: #333; position: sticky; top: 0; z-index: 2; }
+        
+        /* ログエリアのトグル用スタイル */
+        .log-wrap { overflow-y: auto; transition: max-height 0.3s ease-in-out; }
+        .log-wrap.short { max-height: 120px; } /* ヘッダー＋3行分程度 */
+        .log-wrap.full { max-height: 350px; }
 
         /* ステータスバッジ */
         .status-badge { display: inline-block; padding: 5px 10px; border-radius: 12px; background-color: #555; font-size: 0.8em; font-weight: bold; }
@@ -64,7 +68,7 @@
 
 <!-- ヘッダー -->
 <div class="header">
-    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.02</div>
+    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.03</div>
     <div class="clock" id="clockDisplay">00:00:00</div>
     <button class="btn-menu" id="btnMenu">☰</button>
 </div>
@@ -84,18 +88,20 @@
             <button id="btnResetCount" style="min-width: auto; padding: 5px 10px; font-size: 0.8em; background: #555;">全リセット</button>
         </div>
         
-        <div class="count-display"><span id="bellCount">0</span></div>
-        
-        <!-- 手動修正ボタン -->
-        <div style="display: flex; justify-content: center; gap: 15px; margin-bottom: 15px;">
-            <button id="btnMinusCount" class="btn-manual">－</button>
-            <button id="btnPlusCount" class="btn-manual">＋</button>
+        <!-- カウントと手動修正の横並び配置 -->
+        <div style="display: flex; justify-content: space-around; align-items: center; margin: 15px 0;">
+            <div class="count-display" style="flex-grow: 1;"><span id="bellCount">0</span></div>
+            <div style="display: flex; flex-direction: column; gap: 10px;">
+                <button id="btnPlusCount" class="btn-manual" style="width: 70px; height: 50px;">＋</button>
+                <button id="btnMinusCount" class="btn-manual" style="width: 70px; height: 50px;">－</button>
+            </div>
         </div>
         
         <hr style="border-color: #444; margin: 15px 0;">
         
-        <h3 style="margin: 0 0 10px 0;">検知ログ</h3>
-        <div class="log-wrap">
+        <!-- タップで開閉するログヘッダー -->
+        <h3 id="logHeader" style="margin: 0 0 5px 0; cursor: pointer; user-select: none;">▼ 検知ログ (タップで切替)</h3>
+        <div id="logWrap" class="log-wrap short">
             <table id="logTable">
                 <thead><tr><th>#</th><th>検知時刻</th><th>最大強度</th></tr></thead>
                 <tbody></tbody>
@@ -105,7 +111,11 @@
 
     <!-- タイマーパネル -->
     <div class="panel">
-        <h2 style="margin-top: 0;">間隔お知らせタイマー</h2>
+        <h2 style="margin-top: 0; margin-bottom: 10px;">間隔お知らせタイマー</h2>
+        
+        <!-- ステータス表示を見出し直下に移動 -->
+        <div id="timerMessage" class="timer-msg" style="margin: 0 0 15px 0; background: #3c3c3c; padding: 8px; border-radius: 4px; font-size: 1.1em;">待機中</div>
+        
         <div class="setting-row">
             <span>開始時刻</span>
             <input type="time" id="timerStartTime" required>
@@ -126,7 +136,6 @@
             <button id="btnStartTimer" style="flex:1;">▶ 開始</button>
             <button id="btnStopTimer" style="flex:1; background-color: #d13438;" disabled>■ 停止</button>
         </div>
-        <div id="timerMessage" class="timer-msg">待機中</div>
     </div>
 </div>
 
@@ -209,9 +218,7 @@
     document.addEventListener('touchend', e => {
         const touchEndX = e.changedTouches[0].screenX;
         const swipeDist = touchEndX - touchStartX;
-        // 画面右端からの左スワイプで開く
         if (swipeDist < -50 && touchStartX > window.innerWidth - 100) openDrawer();
-        // 右スワイプで閉じる
         if (swipeDist > 50 && drawer.classList.contains('open')) closeDrawer();
     });
 
@@ -253,6 +260,20 @@
         }
     });
 
+    // ログエリアの開閉トグル
+    document.getElementById('logHeader').addEventListener('click', function() {
+        const wrap = document.getElementById('logWrap');
+        if (wrap.classList.contains('short')) {
+            wrap.classList.remove('short');
+            wrap.classList.add('full');
+            this.innerHTML = '▲ 検知ログ (タップで切替)';
+        } else {
+            wrap.classList.remove('full');
+            wrap.classList.add('short');
+            this.innerHTML = '▼ 検知ログ (タップで切替)';
+        }
+    });
+
     const dialog = document.getElementById('settingsDialog');
     document.getElementById('btnOpenSettings').addEventListener('click', () => dialog.showModal());
     document.getElementById('btnCloseSettings').addEventListener('click', () => dialog.close());
@@ -277,7 +298,6 @@
         const btn = e.target;
         const statusEl = document.getElementById('audioStatus');
         
-        // 停止処理
         if (isAnalyzing) {
             if (globalAudioStream) globalAudioStream.getTracks().forEach(t => t.stop());
             if (audioContext && audioContext.state !== 'closed') await audioContext.suspend();
@@ -289,7 +309,6 @@
             return;
         }
 
-        // 開始処理
         if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
         if (audioContext.state === 'suspended') audioContext.resume();
         
@@ -315,13 +334,11 @@
         }
     });
 
-    // 描画処理
     function draw() {
         if (!isAnalyzing) return;
         requestAnimationFrame(draw);
         wCanvas.width = wCanvas.clientWidth; sCanvas.width = sCanvas.clientWidth;
 
-        // 波形
         analyser.getByteTimeDomainData(dataArray);
         ctxW.fillStyle = '#000'; ctxW.fillRect(0, 0, wCanvas.width, wCanvas.height);
         ctxW.lineWidth = 2; ctxW.strokeStyle = '#4fc1ff'; ctxW.beginPath();
@@ -333,7 +350,6 @@
         }
         ctxW.lineTo(wCanvas.width, wCanvas.height / 2); ctxW.stroke();
 
-        // スペクトル・周波数メモリ
         analyser.getByteFrequencyData(freqArray);
         ctxS.fillStyle = '#000'; ctxS.fillRect(0, 0, sCanvas.width, sCanvas.height);
         let barWidth = (sCanvas.width / freqArray.length) * 2.5, barX = 0;
@@ -362,21 +378,19 @@
         }
     }
 
- // === 鐘の音の学習処理（指紋作成） ===
     let isLearning = false;
     document.getElementById('btnLearnStart').addEventListener('click', () => {
         if (!isAnalyzing) return alert('先にマイク接続を開始してください。');
-        if (isLearning) return; // 既に処理中なら何もしない
+        if (isLearning) return;
         
         const btn = document.getElementById('btnLearnStart');
         const resultDiv = document.getElementById('learningResult');
-        btn.disabled = true; // 連打防止
+        btn.disabled = true;
         
         let countdown = 3;
         resultDiv.style.color = '#dcdcaa';
         resultDiv.textContent = `⏳ ${countdown}秒後に学習開始...`;
         
-        // カウントダウン
         const countInterval = setInterval(() => {
             countdown--;
             if (countdown > 0) {
@@ -387,7 +401,6 @@
             }
         }, 1000);
 
-        // 録音・解析処理 (3秒間)
         function startRecording() {
             isLearning = true;
             let tempPeaks = new Array(analyser.frequencyBinCount).fill(0);
@@ -406,7 +419,6 @@
                 isLearning = false;
                 btn.disabled = false;
                 
-                // 平均値から上位5つの周波数帯（インデックス）を抽出
                 let avgPeaks = tempPeaks.map(v => v / frames);
                 let peaksWithIndex = avgPeaks.map((val, idx) => ({val, idx})).sort((a, b) => b.val - a.val);
                 
@@ -420,12 +432,10 @@
         }
     });
 
-    // === 検知ループ（学習データマッチング方式） ===
     function detectLoop() {
         if (!isAnalyzing) return;
-        setTimeout(detectLoop, 100); // 0.1秒ごとにチェック
+        setTimeout(detectLoop, 100);
         
-        // 学習中、またはクールダウン中は判定をスキップ
         if (isLearning || state.learnedPeaks.length === 0 || isRinging) return;
 
         analyser.getByteFrequencyData(freqArray);
@@ -433,31 +443,26 @@
         let matchScore = 0;
         let maxVal = 0;
         
-        // 学習した特定の周波数帯域のみをチェック
         for (let idx of state.learnedPeaks) {
             if (freqArray[idx] > state.threshold) {
                 matchScore++;
-                if (freqArray[idx] > maxVal) maxVal = freqArray[idx]; // ログ用に最大強度を記録
+                if (freqArray[idx] > maxVal) maxVal = freqArray[idx];
             }
         }
 
-        // ピークの過半数（5個設定なら3個以上）が閾値を超えたら「打鐘」と判定
         const requiredMatches = Math.ceil(state.learnedPeaks.length / 2);
         if (matchScore >= requiredMatches) {
             isRinging = true;
             state.count++;
             addLog("自動検知", maxVal);
 
-            // 録画機能がONならトリガー
             if (isRecordFeatureOn && !isRecordingNow) triggerRecording();
 
-            // 二重カウント防止のクールダウン（2秒）
             clearTimeout(cooldownTimer);
             cooldownTimer = setTimeout(() => { isRinging = false; }, 10000);
         }
     }
 
-    // === 5. 録画機能 ===
     document.getElementById('btnToggleRecord').addEventListener('click', (e) => {
         isRecordFeatureOn = !isRecordFeatureOn;
         e.target.textContent = isRecordFeatureOn ? '⏺ 録画: ON' : '⏺ 録画: OFF';
@@ -494,7 +499,6 @@
         setTimeout(() => { if (recorder.state === 'recording') recorder.stop(); }, 4000);
     }
 
-    // === 6. タイマー・ビープ音機能 ===
     let timerLoop, currentTimerCount = 0;
     function playBeep(freq, duration) {
         if (!audioContext) audioContext = new (window.AudioContext || window.webkitAudioContext)();
@@ -532,11 +536,11 @@
             document.getElementById('timerMessage').textContent = `次まで: ${Math.max(0, diffSec).toFixed(1)} 秒 (${currentTimerCount + 1}/${limit}回目)`;
 
             if (diffSec <= preNoticeSec && diffSec > 0 && !isPreNotified) {
-                playBeep(880, 0.2); // 事前通知音 (高音)
+                playBeep(880, 0.2);
                 isPreNotified = true;
             }
             if (diffSec <= 0) {
-                playBeep(440, 1.0); // 打鐘通知音 (低音)
+                playBeep(440, 1.0);
                 currentTimerCount++;
                 isPreNotified = false;
                 if (currentTimerCount >= limit) {
