@@ -507,7 +507,7 @@
         const gain = audioContext.createGain();
         osc.connect(gain); gain.connect(audioContext.destination);
         osc.type = 'sine'; osc.frequency.setValueAtTime(freq, audioContext.currentTime);
-        gain.gain.setValueAtTime(0.5, audioContext.currentTime);
+        gain.gain.setValueAtTime(1.0, audioContext.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + duration);
         osc.start(audioContext.currentTime); osc.stop(audioContext.currentTime + duration);
     }
