@@ -536,11 +536,11 @@
             document.getElementById('timerMessage').textContent = `次まで: ${Math.max(0, diffSec).toFixed(1)} 秒 (${currentTimerCount + 1}/${limit}回目)`;
 
             if (diffSec <= preNoticeSec && diffSec > 0 && !isPreNotified) {
-                playBeep(880, 0.2);
+                playBeep(880, 1.5);
                 isPreNotified = true;
             }
             if (diffSec <= 0) {
-                playBeep(440, 1.0);
+                playBeep(440, 3.0);
                 currentTimerCount++;
                 isPreNotified = false;
                 if (currentTimerCount >= limit) {
