@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>自動カウントV1.04</title>
+    <title>自動カウントV1.05</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 0; overflow-x: hidden; }
         * { box-sizing: border-box; }
@@ -68,7 +68,7 @@
 
 <!-- ヘッダー -->
 <div class="header">
-    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.04</div>
+    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.05</div>
     <div class="clock" id="clockDisplay">00:00:00</div>
     <button class="btn-menu" id="btnMenu">☰</button>
 </div>
@@ -283,12 +283,21 @@
     });
 
     // === 4. オーディオ解析・マイク接続・停止機能 ===
+
     let audioContext, analyser, microphone, dataArray, freqArray;
     let isAnalyzing = false, isRinging = false;
     let cooldownTimer = null;
     let globalAudioStream = null;
     let isRecordFeatureOn = false, isRecordingNow = false;
     
+    // ▼▼▼ 今回追加する減衰計測用の変数 ▼▼▼
+    let isDecayMeasuring = false;
+    let decayStartTime = 0;
+    let maxLowVolume = 0;
+    let decayTargetLow = 0;
+    let pendingMaxVal = 0;
+    
+    // ▲▲▲ ここまで ▲▲▲
     const wCanvas = document.getElementById('waveformCanvas');
     const sCanvas = document.getElementById('spectrumCanvas');
     const rCanvas = document.getElementById('recordCanvas');
@@ -432,6 +441,25 @@
         }
     });
 
+// ▼▼▼ 追加: 低音帯の音量を計算する関数 ▼▼▼
+    function bandVolume(minHz, maxHz) {
+        // audioContext.sampleRate からナイキスト周波数を取得
+        const nyquist = (audioContext.sampleRate || 44100) / 2;
+        const binHz = nyquist / analyser.frequencyBinCount;
+        let sum = 0, count = 0;
+        
+        for (let i = 0; i < freqArray.length; i++) {
+            const freq = i * binHz;
+            if (freq >= minHz && freq <= maxHz) {
+                sum += freqArray[i];
+                count++;
+            }
+        }
+        return count > 0 ? sum / count : 0;
+    }
+    // ▲▲▲ ここまで ▲▲▲
+    
+    // ▼▼▼ 修正: detectLoop関数 ▼▼▼
     function detectLoop() {
         if (!isAnalyzing) return;
         setTimeout(detectLoop, 100);
@@ -439,7 +467,45 @@
         if (isLearning || state.learnedPeaks.length === 0 || isRinging) return;
 
         analyser.getByteFrequencyData(freqArray);
-        
+
+        // --- 1. 減衰時間の計測モード ---
+        if (isDecayMeasuring) {
+            const currentLow = bandVolume(200, 400);
+            const now = performance.now();
+
+            // 音量が大きくなっている間はピーク（最大値）を更新し続ける
+            if (currentLow > maxLowVolume) {
+                maxLowVolume = currentLow;
+                decayTargetLow = maxLowVolume * 0.6; // 60%まで減衰するのを目標とする
+                decayStartTime = now;
+            } else if (currentLow <= decayTargetLow) {
+                // ターゲット以下に減衰したら時間を計算
+                const decayTime = (now - decayStartTime) / 1000; // 秒に変換
+                isDecayMeasuring = false;
+
+                // 【追加条件】減衰時間が1.5秒以上ならカウントを追加する
+                if (decayTime >= 1.5) {
+                    isRinging = true;
+                    state.count++;
+                    // ログに減衰時間を残すと分かりやすいので少し文言を追加
+                    addLog(`自動検知 (減衰${decayTime.toFixed(1)}s)`, pendingMaxVal);
+
+                    if (isRecordFeatureOn && !isRecordingNow) triggerRecording();
+
+                    clearTimeout(cooldownTimer);
+                    cooldownTimer = setTimeout(() => { isRinging = false; }, 10000);
+                }
+            }
+            
+            // 安全対策：10秒以上経過しても減衰判定が終わらない場合はタイムアウトでリセット
+            if ((now - decayStartTime) / 1000 > 10) {
+                isDecayMeasuring = false;
+            }
+            
+            return; // 減衰計測中は新規のトリガー判定を行わない
+        }
+
+        // --- 2. 新規トリガー検知モード (従来の処理) ---
         let matchScore = 0;
         let maxVal = 0;
         
@@ -451,17 +517,17 @@
         }
 
         const requiredMatches = Math.ceil(state.learnedPeaks.length / 2);
+        
+        // 指紋波形と一致したらトリガー発動 -> 減衰計測モードへ移行
         if (matchScore >= requiredMatches) {
-            isRinging = true;
-            state.count++;
-            addLog("自動検知", maxVal);
-
-            if (isRecordFeatureOn && !isRecordingNow) triggerRecording();
-
-            clearTimeout(cooldownTimer);
-            cooldownTimer = setTimeout(() => { isRinging = false; }, 10000);
+            isDecayMeasuring = true;
+            pendingMaxVal = maxVal;
+            maxLowVolume = bandVolume(200, 400); // 200Hz〜400Hzが低音帯
+            decayTargetLow = maxLowVolume * 0.6;
+            decayStartTime = performance.now();
         }
     }
+    // ▲▲▲ ここまで ▲▲▲
 
     document.getElementById('btnToggleRecord').addEventListener('click', (e) => {
         isRecordFeatureOn = !isRecordFeatureOn;
