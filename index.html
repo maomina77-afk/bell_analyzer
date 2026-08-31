@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>自動カウントV1.05</title>
+    <title>自動カウントV1.06</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 0; overflow-x: hidden; }
         * { box-sizing: border-box; }
@@ -68,7 +68,7 @@
 
 <!-- ヘッダー -->
 <div class="header">
-    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.05</div>
+    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.06</div>
     <div class="clock" id="clockDisplay">00:00:00</div>
     <button class="btn-menu" id="btnMenu">☰</button>
 </div>
@@ -470,7 +470,7 @@
 
         // --- 1. 減衰時間の計測モード ---
         if (isDecayMeasuring) {
-            const currentLow = bandVolume(200, 400);
+            const currentLow = bandVolume(200, 800);
             const now = performance.now();
 
             // 音量が大きくなっている間はピーク（最大値）を更新し続ける
@@ -483,8 +483,8 @@
                 const decayTime = (now - decayStartTime) / 1000; // 秒に変換
                 isDecayMeasuring = false;
 
-                // 【追加条件】減衰時間が1.5秒以上ならカウントを追加する
-                if (decayTime >= 1.5) {
+                // 【追加条件】減衰時間が1.0秒以上ならカウントを追加する
+                if (decayTime >= 1.0) {
                     isRinging = true;
                     state.count++;
                     // ログに減衰時間を残すと分かりやすいので少し文言を追加
@@ -522,7 +522,7 @@
         if (matchScore >= requiredMatches) {
             isDecayMeasuring = true;
             pendingMaxVal = maxVal;
-            maxLowVolume = bandVolume(200, 400); // 200Hz〜400Hzが低音帯
+            maxLowVolume = bandVolume(200, 800); // 200Hz〜800Hzが低中音帯
             decayTargetLow = maxLowVolume * 0.6;
             decayStartTime = performance.now();
         }
