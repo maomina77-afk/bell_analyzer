@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>自動カウントV1.06</title>
+    <title>自動カウントV1.07</title>
     <style>
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #d4d4d4; margin: 0; padding: 0; overflow-x: hidden; }
         * { box-sizing: border-box; }
@@ -66,29 +66,24 @@
 </head>
 <body>
 
-<!-- ヘッダー -->
 <div class="header">
-    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.06</div>
+    <div style="font-size: 1.1em; font-weight: bold; color: #fff;">自動カウントV1.07</div>
     <div class="clock" id="clockDisplay">00:00:00</div>
     <button class="btn-menu" id="btnMenu">☰</button>
 </div>
 
-<!-- メイン画面 -->
 <div class="container" id="mainContainer">
-    <!-- マイクコントロール -->
     <button id="btnStartAudio" class="btn-start">🎤 マイク接続・解析開始</button>
     <div style="text-align: right; margin-top: -5px; margin-bottom: 5px;">
         <span id="audioStatus" class="status-badge">監視: 停止中</span>
     </div>
 
-    <!-- カウント・ログパネル -->
     <div class="panel" style="border-color: #4fc1ff;">
         <div style="display: flex; justify-content: space-between; align-items: flex-end;">
             <h2 style="margin: 0;">検知カウント</h2>
             <button id="btnResetCount" style="min-width: auto; padding: 5px 10px; font-size: 0.8em; background: #555;">全リセット</button>
         </div>
         
-        <!-- カウントと手動修正の横並び配置 -->
         <div style="display: flex; justify-content: space-around; align-items: center; margin: 15px 0;">
             <div class="count-display" style="flex-grow: 1;"><span id="bellCount">0</span></div>
             <div style="display: flex; flex-direction: row; gap: 10px;">
@@ -99,7 +94,6 @@
         
         <hr style="border-color: #444; margin: 5px 0;">
         
-        <!-- タップで開閉するログヘッダー -->
         <h3 id="logHeader" style="margin: 0 0 5px 0; cursor: pointer; user-select: none;">▼ 検知ログ (タップで切替)</h3>
         <div id="logWrap" class="log-wrap short">
             <table id="logTable">
@@ -109,11 +103,9 @@
         </div>
     </div>
 
-    <!-- タイマーパネル -->
     <div class="panel">
         <h2 style="margin-top: 0; margin-bottom: 10px;">間隔お知らせタイマー</h2>
         
-        <!-- ステータス表示を見出し直下に移動 -->
         <div id="timerMessage" class="timer-msg" style="margin: 0 0 15px 0; background: #3c3c3c; padding: 8px; border-radius: 4px; font-size: 1.1em;">待機中</div>
         
         <div class="setting-row">
@@ -139,7 +131,6 @@
     </div>
 </div>
 
-<!-- 右スワイプで出るドロワー (波形・録画・設定) -->
 <div class="drawer-overlay" id="drawerOverlay"></div>
 <div class="drawer" id="sideDrawer">
     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
@@ -163,7 +154,6 @@
     <button id="btnOpenSettings" style="width: 100%; background-color: #512da8;">⚙️ システム設定</button>
 </div>
 
-<!-- 設定ダイアログ -->
 <dialog id="settingsDialog">
     <h2 style="margin-top:0;">システム設定</h2>
     <div style="background: #2d2d2d; padding: 10px; border-radius: 5px; margin-bottom: 15px;">
@@ -177,7 +167,6 @@
     <button id="btnCloseSettings" style="width: 100%; background-color: #555;">閉じる</button>
 </dialog>
 
-<!-- 録画用の隠しキャンバス -->
 <canvas id="recordCanvas" width="640" height="360" style="display: none;"></canvas>
 
 <script>
@@ -185,12 +174,27 @@
     const DEFAULT_PEAKS = [27, 34, 19, 31, 35];
     let state = { count: 0, logs: [], learnedPeaks: [...DEFAULT_PEAKS], threshold: 170 };
     
+    // 【修正箇所】以前のデータ形式とのズレ（未定義キーの発生）を防ぐため、オブジェクトをマージして復元
     const savedState = localStorage.getItem('bell_app_v6');
     if (savedState) { 
-        state = JSON.parse(savedState);
-        if(!state.learnedPeaks || state.learnedPeaks.length === 0) state.learnedPeaks = [...DEFAULT_PEAKS];
+        try {
+            state = { ...state, ...JSON.parse(savedState) };
+            if(!state.learnedPeaks || state.learnedPeaks.length === 0) state.learnedPeaks = [...DEFAULT_PEAKS];
+        } catch(e) { console.error('保存データの読み込みエラー'); }
     }
     function saveState() { localStorage.setItem('bell_app_v6', JSON.stringify(state)); }
+
+    // 【修正箇所】タイマー設定値の保存・復元処理を追加
+    const timerSettingsKeys = ['timerStartTime', 'timerInterval', 'timerPreNotice', 'timerLimit'];
+    timerSettingsKeys.forEach(id => {
+        const el = document.getElementById(id);
+        const savedVal = localStorage.getItem('bell_app_v6_' + id);
+        if (savedVal !== null) el.value = savedVal;
+        
+        el.addEventListener('change', (e) => {
+            localStorage.setItem('bell_app_v6_' + id, e.target.value);
+        });
+    });
 
     setInterval(() => {
         const now = new Date();
@@ -288,16 +292,17 @@
     let isAnalyzing = false, isRinging = false;
     let cooldownTimer = null;
     let globalAudioStream = null;
-    let isRecordFeatureOn = false, isRecordingNow = false;
     
-    // ▼▼▼ 今回追加する減衰計測用の変数 ▼▼▼
+    // 【修正箇所】録画ON/OFFの状態もローカルストレージで復元
+    let isRecordFeatureOn = localStorage.getItem('bell_app_v6_record') === 'true';
+    let isRecordingNow = false;
+    
     let isDecayMeasuring = false;
     let decayStartTime = 0;
     let maxLowVolume = 0;
     let decayTargetLow = 0;
     let pendingMaxVal = 0;
     
-    // ▲▲▲ ここまで ▲▲▲
     const wCanvas = document.getElementById('waveformCanvas');
     const sCanvas = document.getElementById('spectrumCanvas');
     const rCanvas = document.getElementById('recordCanvas');
@@ -441,9 +446,7 @@
         }
     });
 
-// ▼▼▼ 追加: 低音帯の音量を計算する関数 ▼▼▼
     function bandVolume(minHz, maxHz) {
-        // audioContext.sampleRate からナイキスト周波数を取得
         const nyquist = (audioContext.sampleRate || 44100) / 2;
         const binHz = nyquist / analyser.frequencyBinCount;
         let sum = 0, count = 0;
@@ -457,9 +460,7 @@
         }
         return count > 0 ? sum / count : 0;
     }
-    // ▲▲▲ ここまで ▲▲▲
     
-    // ▼▼▼ 修正: detectLoop関数 ▼▼▼
     function detectLoop() {
         if (!isAnalyzing) return;
         setTimeout(detectLoop, 100);
@@ -468,26 +469,21 @@
 
         analyser.getByteFrequencyData(freqArray);
 
-        // --- 1. 減衰時間の計測モード ---
         if (isDecayMeasuring) {
             const currentLow = bandVolume(200, 800);
             const now = performance.now();
 
-            // 音量が大きくなっている間はピーク（最大値）を更新し続ける
             if (currentLow > maxLowVolume) {
                 maxLowVolume = currentLow;
-                decayTargetLow = maxLowVolume * 0.4; // 40%まで減衰するのを目標とする
+                decayTargetLow = maxLowVolume * 0.4; 
                 decayStartTime = now;
             } else if (currentLow <= decayTargetLow) {
-                // ターゲット以下に減衰したら時間を計算
-                const decayTime = (now - decayStartTime) / 1000; // 秒に変換
+                const decayTime = (now - decayStartTime) / 1000; 
                 isDecayMeasuring = false;
 
-                // 【追加条件】減衰時間が1.0秒以上ならカウントを追加する
                 if (decayTime >= 1.0) {
                     isRinging = true;
                     state.count++;
-                    // ログに減衰時間を残すと分かりやすいので少し文言を追加
                     addLog(`自動検知 (減衰${decayTime.toFixed(1)}s)`, pendingMaxVal);
 
                     if (isRecordFeatureOn && !isRecordingNow) triggerRecording();
@@ -497,15 +493,13 @@
                 }
             }
             
-            // 安全対策：10秒以上経過しても減衰判定が終わらない場合はタイムアウトでリセット
             if ((now - decayStartTime) / 1000 > 10) {
                 isDecayMeasuring = false;
             }
             
-            return; // 減衰計測中は新規のトリガー判定を行わない
+            return; 
         }
 
-        // --- 2. 新規トリガー検知モード (従来の処理) ---
         let matchScore = 0;
         let maxVal = 0;
         
@@ -518,19 +512,23 @@
 
         const requiredMatches = Math.ceil(state.learnedPeaks.length / 2);
         
-        // 指紋波形と一致したらトリガー発動 -> 減衰計測モードへ移行
         if (matchScore >= requiredMatches) {
             isDecayMeasuring = true;
             pendingMaxVal = maxVal;
-            maxLowVolume = bandVolume(200, 800); // 200Hz〜800Hzが低中音帯
+            maxLowVolume = bandVolume(200, 800); 
             decayTargetLow = maxLowVolume * 0.4;
             decayStartTime = performance.now();
         }
     }
-    // ▲▲▲ ここまで ▲▲▲
 
-    document.getElementById('btnToggleRecord').addEventListener('click', (e) => {
+    // 【修正箇所】録画ボタン初期表示の反映と、クリック時の保存処理
+    const btnToggleRecord = document.getElementById('btnToggleRecord');
+    btnToggleRecord.textContent = isRecordFeatureOn ? '⏺ 録画: ON' : '⏺ 録画: OFF';
+    btnToggleRecord.className = isRecordFeatureOn ? 'btn-record-on' : 'btn-record-off';
+
+    btnToggleRecord.addEventListener('click', (e) => {
         isRecordFeatureOn = !isRecordFeatureOn;
+        localStorage.setItem('bell_app_v6_record', isRecordFeatureOn); // 状態をローカルストレージへ保存
         e.target.textContent = isRecordFeatureOn ? '⏺ 録画: ON' : '⏺ 録画: OFF';
         e.target.className = isRecordFeatureOn ? 'btn-record-on' : 'btn-record-off';
     });
