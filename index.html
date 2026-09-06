@@ -476,7 +476,7 @@
             // 音量が大きくなっている間はピーク（最大値）を更新し続ける
             if (currentLow > maxLowVolume) {
                 maxLowVolume = currentLow;
-                decayTargetLow = maxLowVolume * 0.6; // 60%まで減衰するのを目標とする
+                decayTargetLow = maxLowVolume * 0.4; // 40%まで減衰するのを目標とする
                 decayStartTime = now;
             } else if (currentLow <= decayTargetLow) {
                 // ターゲット以下に減衰したら時間を計算
@@ -523,7 +523,7 @@
             isDecayMeasuring = true;
             pendingMaxVal = maxVal;
             maxLowVolume = bandVolume(200, 800); // 200Hz〜800Hzが低中音帯
-            decayTargetLow = maxLowVolume * 0.6;
+            decayTargetLow = maxLowVolume * 0.4;
             decayStartTime = performance.now();
         }
     }
